@@ -1,0 +1,34 @@
+server:
+  port: 8091
+
+spring:
+  application:
+    name: movie-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  jpa:
+    hibernate:
+      ddl-auto: update  # Tự động tạo hoặc cập nhật schema
+    show-sql: true     # Hiển thị SQL query (dành cho phát triển)
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.SQLServerDialect
+  cloud:
+    discovery:
+      enabled: true  # Kích hoạt service discovery (nếu dùng Eureka)
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
