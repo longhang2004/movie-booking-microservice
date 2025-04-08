@@ -82,7 +82,7 @@ SPRING_DATASOURCE_USERNAME=your-username
 SPRING_DATASOURCE_PASSWORD=your-password
 ```
 
-Replace your-azure-sql-server, yourdb, your-username, and your-password with your actual Azure SQL Server details.
+Replace your-azure-sql-server, yourdb, your-username, and your-password with your actual Azure SQL Server details. Of course, you can use your local database, or another cloud database if you want to, as long as you fill in all the fields in the ```.env``` file.
 
 ### Build the project
 
