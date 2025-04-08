@@ -14,7 +14,6 @@ A microservices-based application for booking movie tickets, managing theaters, 
 - [API Endpoints](#api-endpoints)
 - [Environment Variables](#environment-variables)
 - [Contributing](#contributing)
-- [License](#license)
 
 ## Overview
 
@@ -188,7 +187,3 @@ We welcome contributions! Follow these steps:
 4. Push to the branch: `git push origin feature/your-feature`.
 5. Open a Pull Request.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-```
