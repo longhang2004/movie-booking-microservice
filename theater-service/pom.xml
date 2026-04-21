@@ -84,6 +84,14 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+	
+		<!-- H2 Database for tests -->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+			<version>2.3.232</version>
+		</dependency>
 	</dependencies>
 
 	<dependencyManagement>
@@ -95,7 +103,15 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
-		</dependencies>
+		
+		<!-- H2 Database for tests -->
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<scope>test</scope>
+			<version>2.3.232</version>
+		</dependency>
+	</dependencies>
 	</dependencyManagement>
 
 	<build>
