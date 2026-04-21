@@ -2,9 +2,9 @@ package com.example.showtime_service.service;
 
 import com.example.showtime_service.client.MovieClient;
 import com.example.showtime_service.client.TheaterClient;
+import com.example.showtime_service.exception.ResourceNotFoundException;
 import com.example.showtime_service.model.Showtime;
 import com.example.showtime_service.repository.ShowtimeRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,14 +13,17 @@ import java.util.Optional;
 @Service
 public class ShowtimeService {
 
-    @Autowired
-    private ShowtimeRepository showtimeRepository;
+    private final ShowtimeRepository showtimeRepository;
+    private final MovieClient movieClient;
+    private final TheaterClient theaterClient;
 
-    @Autowired
-    private MovieClient movieClient;
-
-    @Autowired
-    private TheaterClient theaterClient;
+    public ShowtimeService(ShowtimeRepository showtimeRepository,
+                           MovieClient movieClient,
+                           TheaterClient theaterClient) {
+        this.showtimeRepository = showtimeRepository;
+        this.movieClient = movieClient;
+        this.theaterClient = theaterClient;
+    }
 
     public List<Showtime> getAllShowtimes() {
         return showtimeRepository.findAll();
@@ -31,16 +34,14 @@ public class ShowtimeService {
     }
 
     public Showtime createShowtime(Showtime showtime) {
-        // Kiểm tra xem movie và theater có tồn tại không (gọi Feign Client)
         movieClient.getMovieById(showtime.getMovieId());
         theaterClient.getTheaterById(showtime.getTheaterId());
-
         return showtimeRepository.save(showtime);
     }
 
     public Showtime updateShowtime(Long id, Showtime showtimeDetails) {
         Showtime showtime = showtimeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Showtime not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Showtime not found with id: " + id));
 
         showtime.setMovieId(showtimeDetails.getMovieId());
         showtime.setTheaterId(showtimeDetails.getTheaterId());
@@ -54,7 +55,7 @@ public class ShowtimeService {
 
     public void deleteShowtime(Long id) {
         Showtime showtime = showtimeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Showtime not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Showtime not found with id: " + id));
         showtimeRepository.delete(showtime);
     }
 }

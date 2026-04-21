@@ -6,11 +6,17 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: confluentinc/cp-kafka:latest
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -20,17 +26,37 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2019-latest
     environment:
-      SA_PASSWORD: "YourStrong!Passw0rd"
+      SA_PASSWORD: ${SA_PASSWORD}
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Express"
     ports:
       - "1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $${SA_PASSWORD} -Q 'SELECT 1'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  zipkin:
+    image: openzipkin/zipkin:latest
+    ports:
+      - "9411:9411"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   eureka-server:
     build:
@@ -38,6 +64,11 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8761:8761"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
   api-gateway:
     build:
@@ -46,9 +77,11 @@ services:
     ports:
       - "8090:8090"
     depends_on:
-      - eureka-server
+      eureka-server:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   movie-service:
     build:
@@ -57,16 +90,16 @@ services:
     ports:
       - "8091:8091"
     depends_on:
-      - eureka-server
-      - sqlserver
-      - kafka
+      eureka-server:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver
-      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   theater-service:
     build:
@@ -75,16 +108,16 @@ services:
     ports:
       - "8092:8092"
     depends_on:
-      - eureka-server
-      - sqlserver
-      - kafka
+      eureka-server:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver
-      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   showtime-service:
     build:
@@ -93,16 +126,19 @@ services:
     ports:
       - "8093:8093"
     depends_on:
-      - eureka-server
-      - sqlserver
-      - kafka
+      eureka-server:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver
-      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   booking-service:
     build:
@@ -111,16 +147,19 @@ services:
     ports:
       - "8094:8094"
     depends_on:
-      - eureka-server
-      - sqlserver
-      - kafka
+      eureka-server:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver
-      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
   payment-service:
     build:
@@ -129,16 +168,19 @@ services:
     ports:
       - "8095:8095"
     depends_on:
-      - eureka-server
-      - sqlserver
-      - kafka
+      eureka-server:
+        condition: service_healthy
+      sqlserver:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
     environment:
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
       - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
       - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
       - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_DATASOURCE_DRIVER-CLASS-NAME=com.microsoft.sqlserver.jdbc.SQLServerDriver
-      - SPRING_KAFKA_BOOTSTRAP-SERVERS=kafka:9092
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
 
 volumes:
   sqlserver_data:
