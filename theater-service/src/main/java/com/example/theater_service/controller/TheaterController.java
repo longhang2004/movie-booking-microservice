@@ -1,54 +1,78 @@
 package com.example.theater_service.controller;
 
+import com.example.theater_service.exception.ResourceNotFoundException;
 import com.example.theater_service.model.Theater;
 import com.example.theater_service.service.TheaterService;
-import org.springframework.beans.factory.annotation.Autowired;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-// @RequestMapping("/theaters")
+@RequestMapping("/theaters")
+@Tag(name = "Theaters", description = "Theater and room management APIs")
 public class TheaterController {
 
-    @Autowired
-    private TheaterService theaterService;
+    private final TheaterService theaterService;
+
+    public TheaterController(TheaterService theaterService) {
+        this.theaterService = theaterService;
+    }
 
     @GetMapping
+    @Operation(summary = "Get all theaters")
     public List<Theater> getAllTheaters() {
         return theaterService.getAllTheaters();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Theater> getTheaterById(@PathVariable Long id) {
+    @Operation(summary = "Get theater by ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Theater found"),
+            @ApiResponse(responseCode = "404", description = "Theater not found")
+    })
+    public ResponseEntity<Theater> getTheaterById(
+            @Parameter(description = "Theater ID") @PathVariable Long id) {
         return theaterService.getTheaterById(id)
                 .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+                .orElseThrow(() -> new ResourceNotFoundException("Theater not found with id: " + id));
     }
 
     @PostMapping
-    public Theater createTheater(@RequestBody Theater theater) {
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Create a new theater")
+    @ApiResponse(responseCode = "201", description = "Theater created successfully")
+    public Theater createTheater(@Valid @RequestBody Theater theater) {
         return theaterService.createTheater(theater);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Theater> updateTheater(@PathVariable Long id, @RequestBody Theater theaterDetails) {
-        try {
-            Theater updatedTheater = theaterService.updateTheater(id, theaterDetails);
-            return ResponseEntity.ok(updatedTheater);
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+    @Operation(summary = "Update an existing theater")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Theater updated"),
+            @ApiResponse(responseCode = "404", description = "Theater not found")
+    })
+    public ResponseEntity<Theater> updateTheater(
+            @PathVariable Long id,
+            @Valid @RequestBody Theater theaterDetails) {
+        return ResponseEntity.ok(theaterService.updateTheater(id, theaterDetails));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTheater(@PathVariable Long id) {
-        try {
-            theaterService.deleteTheater(id);
-            return ResponseEntity.ok().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
-        }
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Delete a theater")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Theater deleted"),
+            @ApiResponse(responseCode = "404", description = "Theater not found")
+    })
+    public void deleteTheater(@PathVariable Long id) {
+        theaterService.deleteTheater(id);
     }
 }

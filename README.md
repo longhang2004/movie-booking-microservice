@@ -1,189 +1,301 @@
-# Movie Booking System
+# Movie Booking Microservice System
 
-A microservices-based application for booking movie tickets, managing theaters, showtimes, and payments. Built with Spring Boot, Spring Cloud, Kafka, and SQL Server.
+[![CI Pipeline](https://github.com/YOUR_USERNAME/movie-booking-microservice/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/movie-booking-microservice/actions/workflows/ci.yml)
+[![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org/projects/jdk/17/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)
 
-## Table of Contents
+A production-ready movie ticket booking system built with a **microservices architecture** using Java 17, Spring Boot 3.4, Apache Kafka, and Docker. Demonstrates real-world backend engineering patterns including service discovery, async messaging, distributed tracing, circuit breaking, and API documentation.
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Microservices](#microservices)
-- [Technologies](#technologies)
-- [Prerequisites](#prerequisites)
-- [Setup](#setup)
-- [Running the Application](#running-the-application)
-- [API Endpoints](#api-endpoints)
-- [Environment Variables](#environment-variables)
-- [Contributing](#contributing)
-
-## Overview
-
-The Movie Booking System is a scalable microservices application designed to allow users to:
-- Browse movies, theaters, and showtimes.
-- Book movie tickets.
-- Process payments securely.
-
-It leverages Spring Cloud Gateway for request routing, Eureka for service discovery, Kafka for asynchronous communication, and SQL Server for persistent storage.
+---
 
 ## Architecture
 
-The system is built using a microservices architecture with the following components:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Client (Browser / API)                  │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │ HTTP
+                               ▼
+              ┌────────────────────────────────┐
+              │       API Gateway :8090         │
+              │  (Spring Cloud Gateway)         │
+              │  • Route /movies/**             │
+              │  • Route /theaters/**           │
+              │  • Route /showtimes/**          │
+              │  • Route /bookings/**           │
+              │  • Route /payments/**           │
+              │  • Aggregated Swagger UI        │
+              └──────────┬─────────────────────┘
+                         │ Eureka Service Discovery
+                         ▼
+          ┌──────────────────────────────────────┐
+          │      Eureka Discovery Server :8761    │
+          └──────────────────────────────────────┘
 
-- **API Gateway**: Routes incoming client requests to appropriate microservices.
-- **Discovery Server (Eureka)**: Registers and discovers microservices dynamically.
-- **Microservices**: Handle specific business logic (movies, theaters, showtimes, bookings, payments).
-- **Kafka**: Facilitates asynchronous messaging between `booking-service` and `payment-service`.
-- **SQL Server**: Stores data for all services, configurable for Azure SQL.
+   ┌──────────┐    ┌──────────┐    ┌──────────────────────┐
+   │  Movie   │    │ Theater  │    │     Showtime          │
+   │  :8091   │    │  :8092   │    │      :8093            │
+   │  REST    │◄───┤  REST    │◄───┤  OpenFeign (CB) →     │
+   └──────────┘    └──────────┘    │  movie / theater      │
+                                   └──────────┬────────────┘
+                                              │ Feign
+                              ┌───────────────▼────────────┐
+                              │     Booking Service :8094   │
+                              │  OpenFeign (CB) → showtime  │
+                              │  Kafka Producer →           │
+                              │    "payment-topic"          │
+                              └─────────────┬──────────────┘
+                                            │ Kafka async
+                              ┌─────────────▼──────────────┐
+                              │    Payment Service :8095    │
+                              │  Kafka Consumer             │
+                              │  Kafka Producer →           │
+                              │    "booking-update-topic"   │
+                              └────────────────────────────┘
 
-## Microservices
+  Infrastructure:
+    SQL Server :1433    Apache Kafka :9092    Zipkin :9411
+```
 
-| Service            | Port  | Description                              |
-|--------------------|-------|------------------------------------------|
-| `movie-service`    | 8091  | Manages movie information.              |
-| `theater-service`  | 8092  | Manages theater and room details.       |
-| `showtime-service` | 8093  | Manages movie showtimes.                |
-| `booking-service`  | 8094  | Handles ticket bookings and Kafka messaging. |
-| `payment-service`  | 8095  | Processes payments and updates bookings via Kafka. |
-| `api-gateway`      | 8090  | Entry point for all client requests.    |
-| `discovery-server` | 8761  | Eureka-based service registry.          |
+---
 
-## Technologies
+## Key Features
 
-- **Java**: 17
-- **Spring Boot**: 3.1.0
-- **Spring Cloud**: 2022.0.4
-- **Kafka**: Asynchronous messaging
-- **SQL Server**: Database (configurable for Azure SQL)
-- **Docker & Docker Compose**: Containerization and orchestration
+| Feature | Implementation |
+|---------|---------------|
+| **Service Discovery** | Netflix Eureka |
+| **API Gateway** | Spring Cloud Gateway with aggregated Swagger UI |
+| **Async Messaging** | Apache Kafka (booking → payment flow) |
+| **Inter-Service Calls** | OpenFeign with Resilience4j circuit breakers |
+| **Distributed Tracing** | Micrometer Tracing + Zipkin |
+| **API Documentation** | SpringDoc OpenAPI 3.0 (per-service Swagger + gateway aggregate) |
+| **Error Handling** | RFC 7807 Problem Details responses |
+| **Input Validation** | Bean Validation (`@Valid`, `@NotBlank`, `@Min`) |
+| **Health Monitoring** | Spring Boot Actuator with circuit breaker health indicators |
+| **CI/CD** | GitHub Actions (build, test, Docker image per service) |
+| **Containerization** | Docker Compose with health checks and dependency ordering |
+
+---
+
+## Technology Stack
+
+- **Runtime**: Java 17, Spring Boot 3.4.4
+- **Microservices**: Spring Cloud 2024.0.1, Eureka, Spring Cloud Gateway, OpenFeign
+- **Messaging**: Apache Kafka + Zookeeper (Confluent images)
+- **Database**: Microsoft SQL Server 2019 (Spring Data JPA / Hibernate)
+- **Resilience**: Resilience4j (circuit breakers, retry)
+- **Observability**: Micrometer Tracing, Zipkin, Spring Actuator
+- **API Docs**: SpringDoc OpenAPI 3.0 (Swagger UI)
+- **Build**: Maven 3.x (Maven Wrapper per service)
+- **Infrastructure**: Docker + Docker Compose
+
+---
+
+## Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| `api-gateway` | 8090 | Entry point — routes all traffic, aggregated Swagger UI |
+| `discovery-server` | 8761 | Eureka service registry |
+| `movie-service` | 8091 | Movie CRUD (`/movies/**`) |
+| `theater-service` | 8092 | Theater and room management (`/theaters/**`) |
+| `showtime-service` | 8093 | Showtime scheduling with Feign + circuit breakers (`/showtimes/**`) |
+| `booking-service` | 8094 | Seat booking, Kafka producer (`/bookings/**`) |
+| `payment-service` | 8095 | Payment processing, Kafka consumer (`/payments/**`) |
+
+---
+
+## Async Booking Flow
+
+```
+1. POST /bookings        →  Booking created (status: PENDING)
+                         →  Publishes JSON to "payment-topic"
+
+2. payment-service       →  Consumes "payment-topic"
+                         →  Processes payment
+                         →  Publishes result to "booking-update-topic"
+
+3. booking-service       →  Consumes "booking-update-topic"
+                         →  Updates booking status (CONFIRMED / FAILED)
+```
+
+---
 
 ## Prerequisites
 
-Before running the project, ensure you have the following installed:
-- [Java 17](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html) (or OpenJDK)
-- [Maven](https://maven.apache.org/download.cgi) for building the project
-- [Docker](https://www.docker.com/products/docker-desktop) for containerization
-- [Git](https://git-scm.com/downloads) for cloning the repository
+- Java 17+
+- Maven 3.8+
+- Docker Desktop
 
-## Setup
+---
 
-### Clone the Repository
+## Quick Start
 
-```bash
-git clone https://github.com/your-username/movie-booking-system.git
-cd movie-booking-system
-```
-## Configure Environment Variables
-
-Sensitive information (e.g., Azure SQL credentials) is not included in the repository. Create a ```.env``` file in the project root with the following content:
+### 1. Clone the repository
 
 ```bash
-SPRING_DATASOURCE_URL=jdbc:sqlserver://your-azure-sql-server.database.windows.net:1433;databaseName=yourdb;encrypt=true;trustServerCertificate=true
-SPRING_DATASOURCE_USERNAME=your-username
-SPRING_DATASOURCE_PASSWORD=your-password
+git clone https://github.com/YOUR_USERNAME/movie-booking-microservice.git
+cd movie-booking-microservice
 ```
 
-Replace your-azure-sql-server, yourdb, your-username, and your-password with your actual Azure SQL Server details. Of course, you can use your local database, or another cloud database if you want to, as long as you fill in all the fields in the ```.env``` file.
+### 2. Configure environment variables
 
-### Build the project
-
-Build all microservices using Maven to generate JAR files:
-
-```bash 
-mvn clean package -pl api-gateway,movie-service,theater-service,showtime-service,booking-service,payment-service,discovery-server -am
+```bash
+cp .env.example .env
+# Edit .env — set SA_PASSWORD and database credentials
 ```
 
-This creates JAR files in the target/ directory of each service.
+### 3. Build all services
 
-## Running the Application
+```bash
+for service in discovery-server api-gateway movie-service theater-service showtime-service booking-service payment-service; do
+  (cd $service && ./mvnw clean package -DskipTests)
+done
+```
 
-### Using Docker Compose
+### 4. Start the full stack
 
-1. **Build Docker images**:
-   ```bash
-   docker-compose build
-   ```
+```bash
+docker-compose up --build -d
+```
 
-2. **Start all services**:
-   ```bash
-   docker-compose up
-   ```
+### 5. Verify startup
 
-   To run in detached mode:
-   ```bash
-   docker-compose up -d
-   ```
+```bash
+# Eureka dashboard (wait ~30s for services to register)
+open http://localhost:8761
 
-3. **Stop the application**:
-   ```bash
-   docker-compose down
-   ```
+# Aggregated Swagger UI (all 5 services)
+open http://localhost:8090/swagger-ui.html
 
-   To remove volumes (e.g., SQL Server data):
-   ```bash
-   docker-compose down -v
-   ```
+# Distributed tracing
+open http://localhost:9411
+```
 
-### Verify Services
+---
 
-- **Eureka Dashboard**: Open `http://localhost:8761/` in your browser to check registered services.
-- **API Gateway**: Test endpoints via `http://localhost:8090/`.
-- **View logs**:
-   ```bash
-   docker logs <service-name>
-   ```
+## API Documentation
 
-## API Endpoints
+Each service exposes its own Swagger UI at `http://localhost:<port>/swagger-ui.html`.
 
-### Movie Service
-- **GET /movies**: Retrieve all movies.
-- **POST /movies**: Add a new movie.
-  ```bash
-  curl -X POST http://localhost:8090/movies -H "Content-Type: application/json" -d '{"title":"Inception","genre":"Sci-Fi","duration":148,"releaseDate":"2010-07-16","description":"A thief...","director":"Christopher Nolan"}'
-  ```
+The API Gateway aggregates all service docs at **http://localhost:8090/swagger-ui.html** — use the dropdown to switch between services.
 
-### Theater Service
-- **GET /theaters**: Retrieve all theaters.
-- **POST /theaters**: Add a new theater.
-  ```bash
-  curl -X POST http://localhost:8090/theaters -H "Content-Type: application/json" -d '{"name":"CGV Vincom","location":"HCMC","contactInfo":"0123-456-789","rooms":[{"name":"Room 1","capacity":100}]}'
-  ```
+### Example Requests
 
-### Showtime Service
-- **GET /showtimes**: Retrieve all showtimes.
-- **POST /showtimes**: Add a new showtime.
-  ```bash
-  curl -X POST http://localhost:8090/showtimes -H "Content-Type: application/json" -d '{"movieId":1,"theaterId":1,"roomId":1,"startTime":"2025-04-10T18:00:00","endTime":"2025-04-10T20:30:00","price":150000.0}'
-  ```
+**Create a movie:**
+```bash
+curl -X POST http://localhost:8090/movies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Inception",
+    "genre": "Sci-Fi",
+    "duration": 148,
+    "releaseDate": "2010-07-16",
+    "description": "A mind-bending thriller",
+    "director": "Christopher Nolan"
+  }'
+```
 
-### Booking Service
-- **GET /bookings/{userId}**: Retrieve bookings by user ID.
-- **POST /bookings**: Create a new booking.
-  ```bash
-  curl -X POST "http://localhost:8090/bookings?userId=1&showtimeId=1" -H "Content-Type: application/json" -d '["A1","A2"]'
-  ```
+**Create a theater:**
+```bash
+curl -X POST http://localhost:8090/theaters \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Cineplex Downtown",
+    "location": "123 Main St",
+    "contactInfo": "info@cineplex.com"
+  }'
+```
 
-### Payment Service
-- **GET /payments/{bookingId}**: Retrieve payment by booking ID.
-- **POST /payments**: Process a payment.
-  ```bash
-  curl -X POST "http://localhost:8090/payments?bookingId=1&userId=1&amount=300000.0"
-  ```
+**Book seats:**
+```bash
+curl -X POST "http://localhost:8090/bookings?userId=1&showtimeId=1" \
+  -H "Content-Type: application/json" \
+  -d '["A1", "A2", "A3"]'
+```
+
+**Get user bookings:**
+```bash
+curl http://localhost:8090/bookings/user/1
+```
+
+**Check payment status:**
+```bash
+curl http://localhost:8090/payments/1
+```
+
+**Validation error example** (RFC 7807 Problem Details):
+```bash
+curl -X POST http://localhost:8090/movies \
+  -H "Content-Type: application/json" \
+  -d '{"genre": "Sci-Fi"}'
+# Response: 400 with structured error + field-level messages
+```
+
+---
+
+## Health & Observability
+
+```bash
+# Service health (includes circuit breaker state)
+curl http://localhost:8094/actuator/health  # booking-service
+
+# Gateway routes
+curl http://localhost:8090/actuator/gateway/routes
+
+# Metrics
+curl http://localhost:8091/actuator/metrics
+
+# Distributed traces
+open http://localhost:9411
+```
+
+---
+
+## Running Tests
+
+```bash
+# Run tests for a specific service
+cd movie-service && ./mvnw test
+
+# Run all service tests
+for service in movie-service theater-service showtime-service booking-service payment-service; do
+  echo "Testing $service..."
+  (cd $service && ./mvnw test)
+done
+```
+
+---
 
 ## Environment Variables
 
-The following environment variables are required (set in `.env` or your environment):
+| Variable | Description |
+|----------|-------------|
+| `SA_PASSWORD` | SQL Server SA password |
+| `SPRING_DATASOURCE_URL` | JDBC connection string |
+| `SPRING_DATASOURCE_USERNAME` | Database username |
+| `SPRING_DATASOURCE_PASSWORD` | Database password |
+| `ZIPKIN_ENDPOINT` | Zipkin endpoint (default: `http://zipkin:9411/api/v2/spans`) |
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | Kafka address (default: `localhost:9092`) |
 
-| Variable                  | Description                          | Example Value                                      |
-|---------------------------|--------------------------------------|---------------------------------------------------|
-| `SPRING_DATASOURCE_URL`   | Database connection string          | `jdbc:sqlserver://your-server...`                 |
-| `SPRING_DATASOURCE_USERNAME` | Database username                | `your-username`                                   |
-| `SPRING_DATASOURCE_PASSWORD` | Database password                | `your-password`                                   |
+---
 
-## Contributing
+## Project Structure
 
-We welcome contributions! Follow these steps:
-1. Fork the repository.
-2. Create a feature branch: `git checkout -b feature/your-feature`.
-3. Commit your changes: `git commit -m "Add your feature"`.
-4. Push to the branch: `git push origin feature/your-feature`.
-5. Open a Pull Request.
-
+```
+movie-booking-microservice/
+├── .github/workflows/ci.yml       # GitHub Actions CI pipeline
+├── docker-compose.yml             # Full stack with health checks
+├── .env.example                   # Environment variable template
+├── sql/
+│   ├── create.sql                 # Database schema
+│   └── insert.sql                 # Sample data
+├── api-gateway/                   # Spring Cloud Gateway + Swagger aggregation
+├── discovery-server/              # Eureka Service Registry
+├── movie-service/                 # Movie CRUD + OpenAPI + validation + tests
+├── theater-service/               # Theater management + OpenAPI
+├── showtime-service/              # Scheduling + Feign + Resilience4j
+├── booking-service/               # Booking flow + Kafka + circuit breaker + tests
+└── payment-service/               # Payment processing + Kafka consumer
+```

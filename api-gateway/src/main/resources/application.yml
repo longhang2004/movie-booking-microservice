@@ -10,37 +10,63 @@ spring:
         - id: movie-service
           uri: lb://movie-service
           predicates:
-            - Path=/movies/**
-          filters:
-            - StripPrefix=1
+            - Path=/movies,/movies/**
 
         - id: theater-service
           uri: lb://theater-service
           predicates:
-            - Path=/theaters/**
-          filters:
-            - StripPrefix=1
+            - Path=/theaters,/theaters/**
 
         - id: showtime-service
           uri: lb://showtime-service
           predicates:
-            - Path=/showtimes/**
-          filters:
-            - StripPrefix=1
+            - Path=/showtimes,/showtimes/**
 
         - id: booking-service
           uri: lb://booking-service
           predicates:
-            - Path=/bookings/**
-          filters:
-            - StripPrefix=1
+            - Path=/bookings,/bookings/**
 
         - id: payment-service
           uri: lb://payment-service
           predicates:
-            - Path=/payments/**
+            - Path=/payments,/payments/**
+
+        # API docs routes — rewrite to each service's /v3/api-docs
+        - id: movie-service-docs
+          uri: lb://movie-service
+          predicates:
+            - Path=/movies/v3/api-docs
           filters:
-            - StripPrefix=1
+            - RewritePath=/movies/v3/api-docs, /v3/api-docs
+
+        - id: theater-service-docs
+          uri: lb://theater-service
+          predicates:
+            - Path=/theaters/v3/api-docs
+          filters:
+            - RewritePath=/theaters/v3/api-docs, /v3/api-docs
+
+        - id: showtime-service-docs
+          uri: lb://showtime-service
+          predicates:
+            - Path=/showtimes/v3/api-docs
+          filters:
+            - RewritePath=/showtimes/v3/api-docs, /v3/api-docs
+
+        - id: booking-service-docs
+          uri: lb://booking-service
+          predicates:
+            - Path=/bookings/v3/api-docs
+          filters:
+            - RewritePath=/bookings/v3/api-docs, /v3/api-docs
+
+        - id: payment-service-docs
+          uri: lb://payment-service
+          predicates:
+            - Path=/payments/v3/api-docs
+          filters:
+            - RewritePath=/payments/v3/api-docs, /v3/api-docs
 
 eureka:
   client:
@@ -53,4 +79,27 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway
+        include: health,info,gateway,metrics
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://zipkin:9411/api/v2/spans}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Movie Service
+        url: /movies/v3/api-docs
+      - name: Theater Service
+        url: /theaters/v3/api-docs
+      - name: Showtime Service
+        url: /showtimes/v3/api-docs
+      - name: Booking Service
+        url: /bookings/v3/api-docs
+      - name: Payment Service
+        url: /payments/v3/api-docs
+  api-docs:
+    enabled: true
