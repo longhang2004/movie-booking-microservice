@@ -1,6 +1,6 @@
 # Movie Booking Microservice System
 
-[![CI Pipeline](https://github.com/YOUR_USERNAME/movie-booking-microservice/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/movie-booking-microservice/actions/workflows/ci.yml)
+[![CI Pipeline](https://github.com/longhang2004/movie-booking-microservice/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/movie-booking-microservice/actions/workflows/ci.yml)
 [![Java](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org/projects/jdk/17/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](https://docs.docker.com/compose/)

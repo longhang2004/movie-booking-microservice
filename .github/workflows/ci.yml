@@ -34,7 +34,9 @@ jobs:
 
       - name: Build and test ${{ matrix.service }}
         working-directory: ./${{ matrix.service }}
-        run: ./mvnw clean verify -Dspring.datasource.url=jdbc:h2:mem:testdb --no-transfer-progress
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean verify -Dspring.datasource.url=jdbc:h2:mem:testdb --no-transfer-progress
 
       - name: Upload test reports
         if: always()
@@ -72,7 +74,9 @@ jobs:
 
       - name: Package ${{ matrix.service }}
         working-directory: ./${{ matrix.service }}
-        run: ./mvnw clean package -DskipTests --no-transfer-progress
+        run: |
+          chmod +x ./mvnw
+          ./mvnw clean package -DskipTests --no-transfer-progress
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
