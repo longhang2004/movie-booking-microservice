@@ -18,6 +18,7 @@ echo "token acquired"
 
 echo "== Catalog =="
 curl -sf "$BASE/api/v1/movies?size=5" | python3 -m json.tool | head
+curl -sf "$BASE/api/v1/theaters" | python3 -m json.tool | head
 curl -sf "$BASE/api/v1/showtimes" | python3 -m json.tool | head
 
 echo "== Booking =="

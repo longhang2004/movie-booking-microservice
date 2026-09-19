@@ -9,11 +9,18 @@ import org.springframework.data.repository.query.Param;
 
 public interface MovieRepository extends JpaRepository<Movie, Long> {
 
-    @Query("""
-            SELECT m FROM Movie m
-            WHERE (:q IS NULL OR LOWER(m.title) LIKE LOWER(CONCAT('%', :q, '%'))
-                   OR LOWER(m.director) LIKE LOWER(CONCAT('%', :q, '%')))
-              AND (:genre IS NULL OR LOWER(m.genre) = LOWER(:genre))
-            """)
+    @Query(value = """
+            SELECT * FROM movies m
+            WHERE (:q IS NULL OR m.title ILIKE CONCAT('%', CAST(:q AS VARCHAR), '%')
+                   OR m.director ILIKE CONCAT('%', CAST(:q AS VARCHAR), '%'))
+              AND (:genre IS NULL OR m.genre ILIKE CAST(:genre AS VARCHAR))
+            """,
+            countQuery = """
+            SELECT count(*) FROM movies m
+            WHERE (:q IS NULL OR m.title ILIKE CONCAT('%', CAST(:q AS VARCHAR), '%')
+                   OR m.director ILIKE CONCAT('%', CAST(:q AS VARCHAR), '%'))
+              AND (:genre IS NULL OR m.genre ILIKE CAST(:genre AS VARCHAR))
+            """,
+            nativeQuery = true)
     Page<Movie> search(@Param("q") String q, @Param("genre") String genre, Pageable pageable);
 }
