@@ -7,155 +7,206 @@
 [![Kafka](https://img.shields.io/badge/Kafka-KRaft-black.svg)](https://kafka.apache.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-red.svg)](https://redis.io/)
 
-A portfolio-grade movie ticket booking platform built to match what **Middle Java Backend** roles typically ask for: Spring Boot 3, JWT/OAuth2, Redis, PostgreSQL, Kafka, hexagonal architecture, transactional outbox, observability, Docker, and CI.
-
-This is intentionally over-engineered as a personal learning project.
+Distributed cinema ticketing system. Clients hit a Spring Cloud Gateway; downstream services own their data, coordinate seat inventory with Redis + a unique constraint, and settle payment asynchronously through a transactional outbox and Kafka.
 
 ---
 
-## Why this architecture
-
-Hiring JDs for Middle Java (Zalopay, logistics platforms, product companies, banks) consistently list:
-
-- Java 17 + Spring Boot, REST, JPA, SOLID
-- JWT / Spring Security, Redis caching
-- PostgreSQL, Flyway, unit + integration tests
-- Microservices, Kafka / event-driven flows
-- Docker, CI/CD, monitoring, resilience (circuit breaker, retry)
-- Clean / hexagonal architecture on the core domain
-
-This repo implements those pieces in a single runnable system.
-
----
-
-## Architecture
+## Runtime topology
 
 ```
-                    Browser / curl
+                         HTTP
                            │
                            ▼
               ┌─────────────────────────┐
-              │  API Gateway :8090      │
+              │  api-gateway :8090      │
               │  JWT resource server    │
-              │  Redis rate limit       │
-              │  CORS + correlation id  │
-              │  Aggregated Swagger     │
+              │  Redis INCR rate limit  │
+              │  X-Correlation-Id       │
+              │  lb:// via Eureka       │
               └────────────┬────────────┘
-                           │ Eureka
+                           │
               ┌────────────▼────────────┐
-              │  Discovery :8761        │
+              │  discovery-server :8761 │
               └─────────────────────────┘
 
-  auth :8096     movie :8091     theater :8092     showtime :8093
-  JWT issue      Redis cache     rooms              Feign + CB
-  refresh tokens paginated search                   ──► movie/theater
+  auth-service :8096          movie-service :8091
+  HS256 access + refresh      paginated search
+  RBAC USER | ADMIN           Redis cache (movies)
 
-              booking :8094  (hexagonal)
-              Redis seat locks
-              DB unique (showtime, seat)
-              Transactional outbox ──► Kafka payment-requested
-                           │
-                           ▼
-              payment :8095
-              Strategy gateway + idempotent consumer
-              Kafka payment-completed ──► booking saga (confirm / release seats)
+  theater-service :8092       showtime-service :8093
+  theaters / rooms            Feign → movie, theater
+                              Resilience4j CB + retry
 
-  postgres (db-per-service)   redis   kafka (KRaft)   zipkin   prometheus   grafana
+  booking-service :8094       payment-service :8095
+  hexagonal application       Kafka consumer
+  Redis SET NX seat hold      idempotent charge / bookingId
+  outbox → payment-requested  → payment-completed
+
+  PostgreSQL 16 (db-per-service)   Redis 7   Kafka 3.8 KRaft
+  Zipkin :9411   Prometheus :9090   Grafana :3000
 ```
 
-### Booking saga
-
-1. `POST /api/v1/bookings` with JWT + optional `Idempotency-Key`
-2. Redis `SET NX` holds seats (10 min TTL)
-3. Same DB transaction: insert booking `PENDING` + unique seat rows + outbox row
-4. Outbox relay publishes `payment-requested`
-5. Payment service charges (simulated card gateway) **once per bookingId**
-6. `payment-completed` confirms the booking, or fails and releases seats
+All public traffic is `/api/v1/**`. Gateway rewrites to the service path (`/bookings`, `/movies`, …) and load-balances with `lb://{spring.application.name}`. OpenAPI docs are proxied as `/{service}/v3/api-docs` **before** the catch-all `/{service}/**` routes so Swagger UI at the gateway can aggregate definitions.
 
 ---
 
-## Tech stack
+## Request path
 
-| Area | Choice |
-|------|--------|
-| Runtime | Java 17, Spring Boot 3.4.4, Spring Cloud 2024.0.1 |
-| Identity | Spring Security + OAuth2 Resource Server, JWT HS256, refresh tokens, RBAC (`USER` / `ADMIN`) |
-| Data | PostgreSQL 16, **database per service**, Flyway, optimistic locking |
-| Cache / locks | Redis 7 (movie cache, seat holds, gateway rate limit) |
-| Messaging | Kafka KRaft, transactional outbox, idempotent payment consumer |
-| Resilience | OpenFeign + Resilience4j circuit breaker + retry + fallback |
-| Observability | Actuator, Micrometer Prometheus, Zipkin, Grafana, correlation IDs |
-| API | SpringDoc OpenAPI 3, RFC 7807 Problem Details, pagination |
-| Delivery | Docker Compose, sample Kubernetes manifests, GitHub Actions |
+1. Gateway issues/forwards `X-Correlation-Id` (also used as Micrometer `traceId` context).
+2. Redis key `rl:{clientIp}`: `INCR` + 60s TTL, **60 req/min**. `/actuator/**` and OpenAPI paths are excluded. Over limit → `429`.
+3. JWT is required except for:
+   - `POST /api/v1/auth/**`
+   - `GET` catalog: movies, theaters, showtimes
+   - actuator / swagger
+4. Resource servers decode HS256 (`app.jwt.secret`), map claim `roles` → `ROLE_*`. Catalog **writes** need `ADMIN`. Booking/payment APIs need an authenticated user; booking reads are owner-or-admin.
 
----
-
-## Services
-
-| Service | Port | Notes |
-|---------|------|--------|
-| `api-gateway` | 8090 | JWT, rate limiting, `/api/v1/**` facade |
-| `discovery-server` | 8761 | Eureka |
-| `auth-service` | 8096 | Register / login / refresh / me |
-| `movie-service` | 8091 | Catalog search + Redis cache. Writes require `ADMIN` |
-| `theater-service` | 8092 | Theaters and rooms |
-| `showtime-service` | 8093 | Schedules, Feign to movie/theater |
-| `booking-service` | 8094 | Hexagonal core: ports, Redis locks, outbox |
-| `payment-service` | 8095 | Strategy `PaymentGateway`, Kafka consumer |
-
----
-
-## Quick start
-
-```bash
-cp .env.example .env
-make package          # ./mvnw package in every module
-docker compose up --build -d
-# wait until Eureka shows all instances (http://localhost:8761)
-make smoke
-```
-
-### Demo accounts (seeded)
+Demo seed accounts (non-`test` profile):
 
 | Email | Password | Role |
 |-------|----------|------|
-| `admin@cinema.local` | `Admin@123` | ADMIN |
-| `user@cinema.local` | `User@123` | USER |
-
-### Useful UIs
-
-- Eureka: http://localhost:8761
-- Swagger (gateway): http://localhost:8090/swagger-ui.html
-- Zipkin: http://localhost:9411
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000 (`admin` / `admin`)
+| `admin@cinema.local` | `Admin@123` | `ADMIN` |
+| `user@cinema.local` | `User@123` | `USER` |
 
 ---
 
-## Example API flow
+## Bounded contexts
+
+| Process | Port | Persistence | Sync deps | Async |
+|---------|------|-------------|-----------|--------|
+| `auth-service` | 8096 | `auth_db` | — | — |
+| `movie-service` | 8091 | `movie_db` + Redis cache | — | — |
+| `theater-service` | 8092 | `theater_db` | — | — |
+| `showtime-service` | 8093 | `showtime_db` | Feign movie + theater | — |
+| `booking-service` | 8094 | `booking_db` + Redis locks | Feign showtime | produce `payment-requested`, consume `payment-completed` |
+| `payment-service` | 8095 | `payment_db` | — | consume `payment-requested`, produce `payment-completed` |
+
+Each service runs Flyway (`ddl-auto: validate`, `open-in-view: false`). Schemas are created by `docker/postgres/init.sql`.
+
+### Auth
+
+- `POST /auth/register`, `/auth/login` → access JWT + rotating refresh token (stored hashed).
+- Claims: `userId`, `roles`, `sub` (email). Access TTL from `JWT_EXPIRATION_SECONDS` (default 3600s).
+- `GET /auth/me`, `POST /auth/refresh`.
+
+### Catalog
+
+- Movies: `ILIKE` search on title/director/genre, Spring Data pagination, `@Cacheable` on `GET /movies/{id}`.
+- Theaters load rooms with `@EntityGraph` (avoids lazy-init with `open-in-view=false`).
+- Showtimes call movie/theater over OpenFeign. Circuit breaker `showtime-service` (window 10, failure rate 50%, 5s open) + retry (3 × 1s). Health exposes `circuitbreakers`.
+
+### Booking (hexagonal)
+
+```
+adapter/incoming/web|kafka
+        │
+        ▼
+application/BookingApplicationService   ← BookingUseCase
+        │
+        ├── ShowtimePort        (Feign)
+        ├── SeatLockPort        (Redis SET NX, 10 min TTL)
+        ├── BookingPersistencePort
+        └── OutboxPort
+```
+
+`domain/` has no Spring/JPA/Kafka types. Adapters live under `adapter/outgoing/{persistence,redis,feign}`.
+
+---
+
+## Seat consistency and payment saga
+
+Double-booking is blocked at two layers; payment is decoupled from the HTTP request.
+
+```
+Client                 Booking                 Kafka                 Payment
+  │                      │                       │                     │
+  │ POST /bookings       │                       │                     │
+  │ Idempotency-Key      │                       │                     │
+  │─────────────────────►│ Redis SET NX seats    │                     │
+  │                      │ INSERT booking PENDING│                     │
+  │                      │ INSERT booking_seats  │                     │
+  │                      │   UNIQUE(showtime,seat)                     │
+  │                      │ INSERT outbox PENDING │                     │
+  │ 201 PENDING          │                       │                     │
+  │◄─────────────────────│                       │                     │
+  │                      │ poll outbox 1s        │                     │
+  │                      │──────────────────────►│ payment-requested   │
+  │                      │                       │────────────────────►│ charge once / bookingId
+  │                      │                       │◄────────────────────│ payment-completed
+  │                      │ CONFIRMED | FAILED    │                     │
+  │                      │ release seats on fail │                     │
+```
+
+**Holds.** `SET NX` per `(showtimeId, seat)` with 10 minute TTL. Failed persist releases the keys.
+
+**Hard uniqueness.** `booking_seats (showtime_id, seat_number)` unique. `DataIntegrityViolationException` → `409` + lock release.
+
+**Idempotency.** Unique `bookings.idempotency_key`. Replay of the same `Idempotency-Key` returns the original booking (no second hold).
+
+**Outbox.** Booking row + seat rows + `outbox_events` share one transaction. `OutboxRelayService` (`@Scheduled` 1s) publishes `PENDING` rows to Kafka then marks `PUBLISHED`. That avoids “DB committed, producer failed”.
+
+**Payment.** `PaymentService.processPayment` is idempotent on `bookingId`. `SimulatedCardGateway` is a strategy `PaymentGateway`. Success/failure is emitted on `payment-completed`; booking confirms or compensates (`FAILED` + delete seat rows + Redis release). Optimistic `@Version` on `bookings`.
+
+**Conflicts.** RFC 7807 `application/problem+json`: `409` for held/booked seats, `404` missing aggregates, `400` validation.
+
+---
+
+## Observability
+
+| Signal | Where |
+|--------|--------|
+| Metrics | `/actuator/prometheus` on every process; Prometheus scrape `host.docker.internal:{port}` |
+| Traces | Micrometer Tracing + Brave, sample rate `1.0`, Zipkin |
+| Logs | `%d [%X{correlationId}] [%X{traceId}]` |
+| Dashboards | Grafana `Movie Booking Platform` (JVM CPU/heap, HTTP server requests) |
+| Health | `show-details: always`; booking includes circuit breakers |
+
+---
+
+## Local run
+
+Java 17, Docker. Compose publishes infra on the host and uses `extra_hosts: *:host-gateway` so services reach Postgres/Redis/Kafka/Eureka when container overlay DNS is unavailable.
 
 ```bash
-# login
+cp .env.example .env
+make package                 # ./mvnw -DskipTests package per module
+docker compose up --build -d
+# Eureka http://localhost:8761 should list all seven apps
+make smoke
+```
+
+| UI | URL |
+|----|-----|
+| Eureka | http://localhost:8761 |
+| Aggregated OpenAPI | http://localhost:8090/swagger-ui.html |
+| Zipkin | http://localhost:9411 |
+| Prometheus targets | http://localhost:9090/targets |
+| Grafana | http://localhost:3000 (`admin` / `admin`) |
+
+`k8s/base.yaml` is a sample namespace + ConfigMap + Eureka deployment, not a full prod chart.
+
+### API sketch
+
+```bash
 TOKEN=$(curl -s -X POST http://localhost:8090/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"email":"user@cinema.local","password":"User@123"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['accessToken'])")
 
-# public catalog
 curl 'http://localhost:8090/api/v1/movies?q=Inception&size=5'
 curl http://localhost:8090/api/v1/showtimes
 
-# book two seats (async payment)
 curl -X POST http://localhost:8090/api/v1/bookings \
   -H "Authorization: Bearer $TOKEN" \
   -H "Idempotency-Key: demo-001" \
   -H 'Content-Type: application/json' \
   -d '{"showtimeId":1,"seats":["B1","B2"]}'
 
+# poll until CONFIRMED
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/bookings/me
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8090/api/v1/payments/1
 ```
 
-Admin-only catalog writes:
+Catalog mutations:
 
 ```bash
 ADMIN=$(curl -s -X POST http://localhost:8090/api/v1/auth/login \
@@ -175,35 +226,49 @@ curl -X POST http://localhost:8090/api/v1/movies \
 
 ```bash
 make test
-# or one module
+# one module
 cd booking-service && ./mvnw test
 ```
 
-Unit tests cover auth, movie catalog, booking use-cases (locks, idempotency, saga compensation) and payment idempotency. Each service uses an H2 `test` profile (Flyway/Redis/Kafka/Eureka disabled).
+H2 `test` profile: Flyway off, Eureka/Redis/Kafka disabled, in-memory `SeatLockPort`. Coverage is around auth tokens, movie cache/search, booking locks + idempotency + saga compensation, payment-once-per-bookingId.
+
+CI (`.github/workflows/ci.yml`) runs `./mvnw test` per module.
 
 ---
 
-## Project layout
+## Layout
 
 ```
-auth-service/          JWT identity bounded context
+api-gateway/           WebFlux gateway, JWT, Redis rate limit, route + docs proxies
+discovery-server/      Eureka
+auth-service/          identity bounded context
+movie-service/         catalog + Redis
+theater-service/       theaters / rooms
+showtime-service/      schedules, Feign, Resilience4j
 booking-service/
-  domain/              entities, ports
-  application/         use-cases + outbox relay
+  domain/              model, ports, domain exceptions
+  application/         use-case + outbox relay
   adapter/             REST, Kafka, JPA, Redis, Feign
-movie-service/         cached catalog
-theater-service/
-showtime-service/      Feign + circuit breaker
-payment-service/       payment gateway strategy
-api-gateway/
-discovery-server/
-docker/                postgres init, prometheus, grafana
-k8s/                   sample Kubernetes manifests
-scripts/               build-all + smoke test
+payment-service/       PaymentGateway strategy, Kafka
+docker/postgres|prometheus|grafana
+k8s/                   sample manifests
+scripts/build-all.sh   package all modules
+scripts/smoke-test.sh  login → catalog → book → payment
 ```
 
 ---
 
-## Environment
+## Configuration
 
-See `.env.example`. Database-per-service names: `auth_db`, `movie_db`, `theater_db`, `showtime_db`, `booking_db`, `payment_db`.
+See `.env.example`.
+
+| Variable | Default | Use |
+|----------|---------|-----|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` | `cinema` | all JDBC URLs |
+| `JWT_SECRET` | dev HS256 key | must be identical on gateway + resource servers |
+| `REDIS_HOST` | `redis` | cache, locks, rate limit |
+| `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | booking + payment |
+| `ZIPKIN_ENDPOINT` | `http://zipkin:9411/api/v2/spans` | traces |
+| `EUREKA_CLIENT_SERVICEURL_DEFAULTZONE` | `http://eureka-server:8761/eureka/` | discovery |
+
+Logical databases: `auth_db`, `movie_db`, `theater_db`, `showtime_db`, `booking_db`, `payment_db`.
