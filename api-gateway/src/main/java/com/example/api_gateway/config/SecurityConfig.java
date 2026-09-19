@@ -27,8 +27,17 @@ public class SecurityConfig {
         return http
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .authorizeExchange(ex -> ex
-                        .pathMatchers("/actuator/**", "/swagger-ui.html", "/swagger-ui/**", "/webjars/**", "/v3/api-docs/**",
-                                "/*/v3/api-docs", "/api/v1/auth/**", "/auth/**").permitAll()
+                        .pathMatchers(
+                                "/actuator/**",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/webjars/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/*/v3/api-docs",
+                                "/*/v3/api-docs/**",
+                                "/api/v1/auth/**",
+                                "/auth/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/api/v1/movies/**", "/movies/**",
                                 "/api/v1/theaters/**", "/theaters/**",
                                 "/api/v1/showtimes/**", "/showtimes/**").permitAll()

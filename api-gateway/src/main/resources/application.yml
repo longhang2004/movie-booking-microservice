@@ -20,6 +20,49 @@ spring:
             allowedHeaders: "*"
             exposedHeaders: "Authorization,X-Correlation-Id"
       routes:
+        # OpenAPI proxies must win over /{service}/** catch-alls
+        - id: movie-service-docs
+          uri: lb://movie-service
+          predicates:
+            - Path=/movies/v3/api-docs,/movies/v3/api-docs/**
+          filters:
+            - RewritePath=/movies/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
+        - id: theater-service-docs
+          uri: lb://theater-service
+          predicates:
+            - Path=/theaters/v3/api-docs,/theaters/v3/api-docs/**
+          filters:
+            - RewritePath=/theaters/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
+        - id: showtime-service-docs
+          uri: lb://showtime-service
+          predicates:
+            - Path=/showtimes/v3/api-docs,/showtimes/v3/api-docs/**
+          filters:
+            - RewritePath=/showtimes/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
+        - id: booking-service-docs
+          uri: lb://booking-service
+          predicates:
+            - Path=/bookings/v3/api-docs,/bookings/v3/api-docs/**
+          filters:
+            - RewritePath=/bookings/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
+        - id: payment-service-docs
+          uri: lb://payment-service
+          predicates:
+            - Path=/payments/v3/api-docs,/payments/v3/api-docs/**
+          filters:
+            - RewritePath=/payments/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
+        - id: auth-service-docs
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/v3/api-docs,/auth/v3/api-docs/**
+          filters:
+            - RewritePath=/auth/v3/api-docs(?<segment>/?.*), /v3/api-docs${segment}
+
         - id: auth-service
           uri: lb://auth-service
           predicates:
@@ -61,48 +104,6 @@ spring:
             - Path=/api/v1/payments/**,/payments/**
           filters:
             - RewritePath=/api/v1/payments(?<segment>/?.*), /payments${segment}
-
-        - id: movie-service-docs
-          uri: lb://movie-service
-          predicates:
-            - Path=/movies/v3/api-docs
-          filters:
-            - RewritePath=/movies/v3/api-docs, /v3/api-docs
-
-        - id: theater-service-docs
-          uri: lb://theater-service
-          predicates:
-            - Path=/theaters/v3/api-docs
-          filters:
-            - RewritePath=/theaters/v3/api-docs, /v3/api-docs
-
-        - id: showtime-service-docs
-          uri: lb://showtime-service
-          predicates:
-            - Path=/showtimes/v3/api-docs
-          filters:
-            - RewritePath=/showtimes/v3/api-docs, /v3/api-docs
-
-        - id: booking-service-docs
-          uri: lb://booking-service
-          predicates:
-            - Path=/bookings/v3/api-docs
-          filters:
-            - RewritePath=/bookings/v3/api-docs, /v3/api-docs
-
-        - id: payment-service-docs
-          uri: lb://payment-service
-          predicates:
-            - Path=/payments/v3/api-docs
-          filters:
-            - RewritePath=/payments/v3/api-docs, /v3/api-docs
-
-        - id: auth-service-docs
-          uri: lb://auth-service
-          predicates:
-            - Path=/auth/v3/api-docs
-          filters:
-            - RewritePath=/auth/v3/api-docs, /v3/api-docs
 
 app:
   jwt:
