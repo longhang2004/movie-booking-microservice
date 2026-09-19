@@ -40,6 +40,16 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(DownstreamServiceException.class)
+    public ProblemDetail handleDownstream(DownstreamServiceException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        problem.setTitle("Downstream Unavailable");
+        problem.setType(URI.create("https://api.moviebooking.com/errors/downstream"));
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getRequestURI());
+        return problem;
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGenericException(Exception ex, HttpServletRequest request) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");

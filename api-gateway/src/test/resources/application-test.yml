@@ -1,0 +1,16 @@
+spring:
+  cloud:
+    discovery:
+      enabled: false
+    gateway:
+      routes: []
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisReactiveAutoConfiguration
+eureka:
+  client:
+    enabled: false
+app:
+  jwt:
+    secret: ThisIsADevOnlySecretKeyForHS256Algo!!
