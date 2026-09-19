@@ -11,10 +11,12 @@ jobs:
     name: Build & Test (${{ matrix.service }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         service:
           - discovery-server
           - api-gateway
+          - auth-service
           - movie-service
           - theater-service
           - showtime-service
@@ -51,10 +53,12 @@ jobs:
     needs: build-and-test
     if: github.ref == 'refs/heads/main'
     strategy:
+      fail-fast: false
       matrix:
         service:
           - discovery-server
           - api-gateway
+          - auth-service
           - movie-service
           - theater-service
           - showtime-service

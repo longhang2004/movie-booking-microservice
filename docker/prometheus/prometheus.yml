@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+
+scrape_configs:
+  - job_name: api-gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8090"]
+
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8096"]
+
+  - job_name: movie-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8091"]
+
+  - job_name: theater-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8092"]
+
+  - job_name: showtime-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8093"]
+
+  - job_name: booking-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8094"]
+
+  - job_name: payment-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8095"]
