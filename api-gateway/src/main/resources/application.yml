@@ -4,35 +4,64 @@ server:
 spring:
   application:
     name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
   cloud:
     gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Credentials Access-Control-Allow-Origin
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+            exposedHeaders: "Authorization,X-Correlation-Id"
       routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**,/auth/**
+          filters:
+            - RewritePath=/api/v1/auth(?<segment>/?.*), /auth${segment}
+
         - id: movie-service
           uri: lb://movie-service
           predicates:
-            - Path=/movies,/movies/**
+            - Path=/api/v1/movies/**,/movies/**
+          filters:
+            - RewritePath=/api/v1/movies(?<segment>/?.*), /movies${segment}
 
         - id: theater-service
           uri: lb://theater-service
           predicates:
-            - Path=/theaters,/theaters/**
+            - Path=/api/v1/theaters/**,/theaters/**
+          filters:
+            - RewritePath=/api/v1/theaters(?<segment>/?.*), /theaters${segment}
 
         - id: showtime-service
           uri: lb://showtime-service
           predicates:
-            - Path=/showtimes,/showtimes/**
+            - Path=/api/v1/showtimes/**,/showtimes/**
+          filters:
+            - RewritePath=/api/v1/showtimes(?<segment>/?.*), /showtimes${segment}
 
         - id: booking-service
           uri: lb://booking-service
           predicates:
-            - Path=/bookings,/bookings/**
+            - Path=/api/v1/bookings/**,/bookings/**
+          filters:
+            - RewritePath=/api/v1/bookings(?<segment>/?.*), /bookings${segment}
 
         - id: payment-service
           uri: lb://payment-service
           predicates:
-            - Path=/payments,/payments/**
+            - Path=/api/v1/payments/**,/payments/**
+          filters:
+            - RewritePath=/api/v1/payments(?<segment>/?.*), /payments${segment}
 
-        # API docs routes — rewrite to each service's /v3/api-docs
         - id: movie-service-docs
           uri: lb://movie-service
           predicates:
@@ -68,10 +97,23 @@ spring:
           filters:
             - RewritePath=/payments/v3/api-docs, /v3/api-docs
 
+        - id: auth-service-docs
+          uri: lb://auth-service
+          predicates:
+            - Path=/auth/v3/api-docs
+          filters:
+            - RewritePath=/auth/v3/api-docs, /v3/api-docs
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:ThisIsADevOnlySecretKeyForHS256Algo!!}
+
 eureka:
+  instance:
+    prefer-ip-address: true
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_CLIENT_SERVICEURL_DEFAULTZONE:http://localhost:8761/eureka/}
     fetch-registry: true
     register-with-eureka: true
 
@@ -79,18 +121,23 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,gateway,metrics
+        include: health,info,gateway,metrics,prometheus
   tracing:
     sampling:
       probability: 1.0
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://zipkin:9411/api/v2/spans}
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
     urls:
+      - name: Auth Service
+        url: /auth/v3/api-docs
       - name: Movie Service
         url: /movies/v3/api-docs
       - name: Theater Service
@@ -103,3 +150,7 @@ springdoc:
         url: /payments/v3/api-docs
   api-docs:
     enabled: true
+
+logging:
+  pattern:
+    console: "%d{ISO8601} [%X{traceId:-}] %-5level [%thread] %logger{36} - %msg%n"

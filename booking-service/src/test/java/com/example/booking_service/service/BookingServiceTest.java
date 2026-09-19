@@ -1,99 +1,123 @@
-package com.example.booking_service.service;
+package com.example.booking_service.application;
 
-import com.example.booking_service.client.ShowtimeClient;
-import com.example.booking_service.dto.ShowtimeDTO;
-import com.example.booking_service.exception.ResourceNotFoundException;
-import com.example.booking_service.model.Booking;
-import com.example.booking_service.repository.BookingRepository;
+import com.example.booking_service.domain.exception.SeatUnavailableException;
+import com.example.booking_service.domain.model.Booking;
+import com.example.booking_service.domain.model.BookingStatus;
+import com.example.booking_service.domain.model.ShowtimeSnapshot;
+import com.example.booking_service.domain.port.incoming.BookingUseCase;
+import com.example.booking_service.domain.port.outgoing.BookingPersistencePort;
+import com.example.booking_service.domain.port.outgoing.OutboxPort;
+import com.example.booking_service.domain.port.outgoing.SeatLockPort;
+import com.example.booking_service.domain.port.outgoing.ShowtimePort;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
 
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class BookingServiceTest {
+class BookingApplicationServiceTest {
 
     @Mock
-    private BookingRepository bookingRepository;
-
+    private BookingPersistencePort bookingPersistencePort;
     @Mock
-    private ShowtimeClient showtimeClient;
-
+    private ShowtimePort showtimePort;
     @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private SeatLockPort seatLockPort;
+    @Mock
+    private OutboxPort outboxPort;
 
-    @InjectMocks
-    private BookingService bookingService;
-
-    private ShowtimeDTO showtime;
-    private Booking booking;
+    private BookingApplicationService service;
 
     @BeforeEach
     void setUp() {
-        showtime = new ShowtimeDTO();
-        showtime.setId(1L);
-        showtime.setPrice(150000.0);
-
-        booking = new Booking();
-        booking.setId(1L);
-        booking.setUserId(10L);
-        booking.setShowtimeId(1L);
-        booking.setSeats(List.of("A1", "A2"));
-        booking.setStatus("PENDING");
-        booking.setTotalPrice(300000.0);
+        service = new BookingApplicationService(
+                bookingPersistencePort, showtimePort, seatLockPort, outboxPort, new ObjectMapper());
     }
 
     @Test
-    void createBooking_validRequest_createsBookingAndPublishesKafkaEvent() {
-        when(showtimeClient.getShowtimeById(1L)).thenReturn(showtime);
-        when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
+    void createBooking_locksSeatsPersistsAndEnqueuesOutbox() {
+        when(showtimePort.getById(1L)).thenReturn(new ShowtimeSnapshot(1L, new BigDecimal("150000"), LocalDateTime.now()));
+        when(seatLockPort.tryAcquire(eq(1L), anyList(), any(Duration.class))).thenReturn(true);
+        when(bookingPersistencePort.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking booking = inv.getArgument(0);
+            booking.assignId(42L);
+            return booking;
+        });
 
-        Booking result = bookingService.createBooking(10L, 1L, List.of("A1", "A2"));
+        Booking result = service.createBooking(new BookingUseCase.CreateBookingCommand(10L, 1L, List.of("a1", "A2"), "idem-1"));
 
-        assertThat(result.getStatus()).isEqualTo("PENDING");
-        assertThat(result.getTotalPrice()).isEqualTo(300000.0);
-        verify(kafkaTemplate, times(1)).send(eq("payment-topic"), anyString());
+        assertThat(result.getId()).isEqualTo(42L);
+        assertThat(result.getStatus()).isEqualTo(BookingStatus.PENDING);
+        assertThat(result.getTotalPrice()).isEqualByComparingTo("300000");
+        assertThat(result.getSeats()).containsExactly("A1", "A2");
+        verify(outboxPort).enqueue(eq("payment-requested"), eq("42"), anyString());
     }
 
     @Test
-    void getBookingsByUserId_returnsBookingsForUser() {
-        when(bookingRepository.findByUserId(10L)).thenReturn(List.of(booking));
+    void createBooking_whenSeatsLocked_throwsConflict() {
+        when(showtimePort.getById(1L)).thenReturn(new ShowtimeSnapshot(1L, new BigDecimal("150000"), LocalDateTime.now()));
+        when(seatLockPort.tryAcquire(eq(1L), anyList(), any(Duration.class))).thenReturn(false);
 
-        List<Booking> result = bookingService.getBookingsByUserId(10L);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getUserId()).isEqualTo(10L);
+        assertThatThrownBy(() -> service.createBooking(
+                new BookingUseCase.CreateBookingCommand(10L, 1L, List.of("A1"), "k")))
+                .isInstanceOf(SeatUnavailableException.class);
+        verify(bookingPersistencePort, never()).save(any());
     }
 
     @Test
-    void cancelBooking_existingId_setsStatusCancelled() {
-        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
-        when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
+    void createBooking_sameIdempotencyKey_returnsExisting() {
+        Booking existing = Booking.create(10L, 1L, List.of("A1"), new BigDecimal("150000"), "idem-1");
+        existing.assignId(7L);
+        when(bookingPersistencePort.findByIdempotencyKey("idem-1")).thenReturn(Optional.of(existing));
 
-        bookingService.cancelBooking(1L);
+        Booking result = service.createBooking(new BookingUseCase.CreateBookingCommand(10L, 1L, List.of("A1"), "idem-1"));
 
-        assertThat(booking.getStatus()).isEqualTo("CANCELLED");
-        verify(bookingRepository, times(1)).save(booking);
+        assertThat(result.getId()).isEqualTo(7L);
+        verify(seatLockPort, never()).tryAcquire(any(), anyList(), any());
     }
 
     @Test
-    void cancelBooking_nonExistingId_throwsResourceNotFoundException() {
-        when(bookingRepository.findById(99L)).thenReturn(Optional.empty());
+    void onPaymentCompleted_success_confirmsBooking() {
+        Booking booking = Booking.create(10L, 1L, List.of("A1"), new BigDecimal("150000"), "k");
+        booking.assignId(5L);
+        when(bookingPersistencePort.findById(5L)).thenReturn(Optional.of(booking));
+        when(bookingPersistencePort.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThatThrownBy(() -> bookingService.cancelBooking(99L))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessageContaining("Booking not found with id: 99");
+        service.onPaymentCompleted(5L, true);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        verify(seatLockPort, never()).release(any(), anyList());
+    }
+
+    @Test
+    void onPaymentCompleted_failure_releasesSeats() {
+        Booking booking = Booking.create(10L, 1L, List.of("A1"), new BigDecimal("150000"), "k");
+        booking.assignId(5L);
+        when(bookingPersistencePort.findById(5L)).thenReturn(Optional.of(booking));
+        when(bookingPersistencePort.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.onPaymentCompleted(5L, false);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.FAILED);
+        verify(seatLockPort).release(1L, List.of("A1"));
+        verify(bookingPersistencePort).deleteSeats(5L);
     }
 }

@@ -1,62 +1,84 @@
+x-app-env: &app-env
+  EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
+  JWT_SECRET: ${JWT_SECRET:-ThisIsADevOnlySecretKeyForHS256Algo!!}
+  ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-cinema}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-cinema}
+
 services:
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
+  postgres:
+    image: postgres:16-alpine
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      POSTGRES_USER: ${POSTGRES_USER:-cinema}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cinema}
+      POSTGRES_DB: postgres
     ports:
-      - "2181:2181"
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cinema}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   kafka:
-    image: confluentinc/cp-kafka:latest
-    depends_on:
-      zookeeper:
-        condition: service_healthy
+    image: bitnami/kafka:3.7
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_NODE_ID: 1
+      KAFKA_CFG_PROCESS_ROLES: broker,controller
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
     ports:
       - "9092:9092"
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 15s
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
       timeout: 10s
-      retries: 5
-
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2019-latest
-    environment:
-      SA_PASSWORD: ${SA_PASSWORD}
-      ACCEPT_EULA: "Y"
-      MSSQL_PID: "Express"
-    ports:
-      - "1433:1433"
-    volumes:
-      - sqlserver_data:/var/opt/mssql
-    healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P $${SA_PASSWORD} -Q 'SELECT 1'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
+      retries: 12
 
   zipkin:
     image: openzipkin/zipkin:latest
     ports:
       - "9411:9411"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9411/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api-gateway
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
 
   eureka-server:
     build:
@@ -64,11 +86,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8761:8761"
+    environment:
+      EUREKA_HOSTNAME: eureka-server
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8761/actuator/health"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   api-gateway:
     build:
@@ -79,9 +103,26 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      REDIS_HOST: redis
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    ports:
+      - "8096:8096"
+    depends_on:
+      eureka-server:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
 
   movie-service:
     build:
@@ -92,14 +133,14 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
-      sqlserver:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/movie_db
+      REDIS_HOST: redis
 
   theater-service:
     build:
@@ -110,14 +151,11 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
-      sqlserver:
+      postgres:
         condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/theater_db
 
   showtime-service:
     build:
@@ -128,17 +166,11 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
-      sqlserver:
-        condition: service_healthy
-      kafka:
+      postgres:
         condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/showtime_db
 
   booking-service:
     build:
@@ -149,17 +181,17 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
-      sqlserver:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       kafka:
         condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/booking_db
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
 
   payment-service:
     build:
@@ -170,17 +202,14 @@ services:
     depends_on:
       eureka-server:
         condition: service_healthy
-      sqlserver:
+      postgres:
         condition: service_healthy
       kafka:
         condition: service_healthy
     environment:
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
-      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
-      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
-      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
-      - ZIPKIN_ENDPOINT=http://zipkin:9411/api/v2/spans
+      <<: *app-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/payment_db
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
 volumes:
-  sqlserver_data:
+  postgres_data:

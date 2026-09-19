@@ -1,5 +1,7 @@
 package com.example.booking_service.exception;
 
+import com.example.booking_service.domain.exception.BookingConflictException;
+import com.example.booking_service.domain.exception.SeatUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -37,6 +39,26 @@ public class GlobalExceptionHandler {
         problem.setProperty("timestamp", Instant.now());
         problem.setProperty("path", request.getRequestURI());
         problem.setProperty("errors", fieldErrors);
+        return problem;
+    }
+
+    @ExceptionHandler({SeatUnavailableException.class, BookingConflictException.class})
+    public ProblemDetail handleConflict(RuntimeException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        problem.setTitle("Conflict");
+        problem.setType(URI.create("https://api.moviebooking.com/errors/conflict"));
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getRequestURI());
+        return problem;
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ProblemDetail handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Bad Request");
+        problem.setType(URI.create("https://api.moviebooking.com/errors/bad-request"));
+        problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("path", request.getRequestURI());
         return problem;
     }
 
