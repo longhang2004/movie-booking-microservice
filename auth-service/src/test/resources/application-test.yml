@@ -18,7 +18,10 @@ eureka:
     enabled: false
 app:
   jwt:
-    secret: ThisIsADevOnlySecretKeyForHS256Algo!!
-    issuer: movie-booking-test
+    issuer: movie-booking
+    audience: movie-booking-api
     expiration-seconds: 3600
     refresh-expiration-seconds: 86400
+  auth:
+    max-failed-attempts: 5
+    lockout-seconds: 900

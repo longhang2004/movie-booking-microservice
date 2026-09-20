@@ -1,0 +1,2 @@
+com.example.platform.security.ServletSecurityAutoConfiguration
+com.example.platform.security.ReactiveSecurityAutoConfiguration

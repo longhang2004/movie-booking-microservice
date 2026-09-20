@@ -1,6 +1,6 @@
 package com.example.booking_service.adapter.outgoing.feign;
 
-import com.example.booking_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import org.springframework.cloud.openfeign.FallbackFactory;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.stereotype.Component;

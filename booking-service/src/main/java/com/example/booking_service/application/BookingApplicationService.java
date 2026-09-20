@@ -8,7 +8,7 @@ import com.example.booking_service.domain.port.outgoing.BookingPersistencePort;
 import com.example.booking_service.domain.port.outgoing.OutboxPort;
 import com.example.booking_service.domain.port.outgoing.SeatLockPort;
 import com.example.booking_service.domain.port.outgoing.ShowtimePort;
-import com.example.booking_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DataIntegrityViolationException;

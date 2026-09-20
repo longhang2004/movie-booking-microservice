@@ -12,6 +12,7 @@
     <description>Portfolio-grade movie ticket booking platform (Java 17, Spring Boot 3, Kafka, Redis, PostgreSQL)</description>
 
     <modules>
+        <module>platform-security</module>
         <module>discovery-server</module>
         <module>api-gateway</module>
         <module>auth-service</module>

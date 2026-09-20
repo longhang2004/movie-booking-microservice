@@ -10,6 +10,8 @@ metadata:
   namespace: movie-booking
 data:
   JWT_ISSUER: movie-booking
+  JWT_AUDIENCE: movie-booking-api
+  JWT_JWK_SET_URI: http://auth-service:8096/auth/.well-known/jwks.json
   EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
   ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
   REDIS_HOST: redis
@@ -74,12 +76,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: platform-config
-          env:
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: jwt-secret
-                  key: secret
 ---
 apiVersion: v1
 kind: Service

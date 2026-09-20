@@ -24,4 +24,16 @@ eureka:
     enabled: false
 app:
   jwt:
-    secret: ThisIsADevOnlySecretKeyForHS256Algo!!
+    jwk-set-uri:
+    issuer: movie-booking
+    audience: movie-booking-api
+    public-key: |
+      -----BEGIN PUBLIC KEY-----
+      MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApg3Tr9zJ8uOgZs/fyfel
+      EtASWqMmLhowxNdr/q3L4ZME/0bJtnrODHR4C6wRW99zoQxPnnVrWCGGO44aEcJv
+      NzxxnMUptBebulbvTn9cr2q47WAaFAOYchIPoE9EEuDM//Qmlb5oEuraN3585Uwe
+      XszpgyPfxLO5AjwyV4oFu4bpP9pqjqE4NuK0qxDVpNTaT9WvyMiudUYqmg87ibpG
+      pTnZyyd1cx9T9OurBimBJ0lMH4AWTeAigp2P5Ltu3LjlGZv8mYzHArvuBeUJj0pZ
+      gBzkpzsPi2tCIoJ/v/rgMbZFUguHjVuvBe8gAQu0pAf6gzK9IgFaxb/9zr6OpI0g
+      rwIDAQAB
+      -----END PUBLIC KEY-----

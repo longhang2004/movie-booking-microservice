@@ -20,7 +20,6 @@ import java.time.Duration;
 public class RedisRateLimitFilter implements WebFilter, Ordered {
 
     private static final Logger log = LoggerFactory.getLogger(RedisRateLimitFilter.class);
-    private static final int LIMIT = 60;
 
     private final ReactiveStringRedisTemplate redisTemplate;
 
@@ -31,11 +30,14 @@ public class RedisRateLimitFilter implements WebFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
-        if (path.startsWith("/actuator") || path.contains("swagger") || path.contains("api-docs")) {
+        if (path.startsWith("/actuator") || path.contains("swagger") || path.contains("api-docs")
+                || path.contains("/.well-known/")) {
             return chain.filter(exchange);
         }
         String ip = clientIp(exchange);
-        String key = "rl:" + ip;
+        boolean login = path.endsWith("/auth/login") || path.contains("/auth/login");
+        int limit = login ? 10 : 60;
+        String key = login ? "rl:login:" + ip : "rl:" + ip;
         return redisTemplate.opsForValue().increment(key)
                 .flatMap(count -> {
                     if (count == 1L) {
@@ -44,8 +46,8 @@ public class RedisRateLimitFilter implements WebFilter, Ordered {
                     return Mono.just(count);
                 })
                 .flatMap(count -> {
-                    if (count > LIMIT) {
-                        log.warn("Rate limit exceeded for {}", ip);
+                    if (count > limit) {
+                        log.warn("Rate limit exceeded for {} key={}", ip, key);
                         exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
                         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
                         byte[] body = """
