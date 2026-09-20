@@ -1,6 +1,6 @@
 package com.example.theater_service.service;
 
-import com.example.theater_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.example.theater_service.model.Theater;
 import com.example.theater_service.repository.TheaterRepository;
 import org.springframework.stereotype.Service;

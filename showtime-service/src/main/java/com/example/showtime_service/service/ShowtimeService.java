@@ -2,7 +2,7 @@ package com.example.showtime_service.service;
 
 import com.example.showtime_service.client.MovieClient;
 import com.example.showtime_service.client.TheaterClient;
-import com.example.showtime_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.example.showtime_service.model.Showtime;
 import com.example.showtime_service.repository.ShowtimeRepository;
 import org.springframework.stereotype.Service;

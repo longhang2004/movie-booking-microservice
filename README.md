@@ -32,6 +32,8 @@ Distributed cinema ticketing system. Clients hit a Spring Cloud Gateway; downstr
   auth-service :8096          movie-service :8091
   RS256 JWT + JWKS            paginated search
   hashed refresh, lockout     Redis cache (movies)
+  PEM-backed signing key
+  kid=auth-service-rsa
 
   theater-service :8092       showtime-service :8093
   theaters / rooms            Feign → movie, theater
@@ -89,6 +91,7 @@ Each service runs Flyway (`ddl-auto: validate`, `open-in-view: false`). Schemas 
 - Refresh tokens are stored as SHA-256 hashes. Rotation revokes the previous token; presenting a revoked token revokes the whole family (reuse detection).
 - Five failed logins lock the account for 15 minutes (`423 Locked`).
 - JWKS: `GET /auth/.well-known/jwks.json`. Claims: `iss`, `aud`, `userId`, `roles`, `sub` (email). Access TTL from `JWT_EXPIRATION_SECONDS` (default 3600s).
+- Signing key: PKCS8 + X.509 PEM (`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` or `*_LOCATION`). Compose mounts `docker/jwt/*.pem` so `kid` stays `auth-service-rsa` across restarts. Empty PEM generates an ephemeral 2048-bit pair (tests / first boot without files).
 - `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout`.
 
 ### Catalog
@@ -229,19 +232,30 @@ curl -X POST http://localhost:8090/api/v1/movies \
 
 ```bash
 make test
-# one module
+# one module (install platform-security first)
+./auth-service/mvnw -f platform-security/pom.xml -q install
 cd booking-service && ./mvnw test
 ```
 
-H2 `test` profile: Flyway off, Eureka/Redis/Kafka disabled, in-memory `SeatLockPort`. Coverage is around auth tokens, movie cache/search, booking locks + idempotency + saga compensation, payment-once-per-bookingId.
+H2 `test` profile: Flyway off, Eureka/Redis/Kafka disabled, in-memory `SeatLockPort`. Coverage is around auth tokens, movie cache/search, booking locks + idempotency + saga compensation, payment-once-per-bookingId, JWT PEM load, and shared `platform-security` decoder/validators.
 
-CI (`.github/workflows/ci.yml`) runs `./mvnw test` per module.
+CI (`.github/workflows/ci.yml`) installs `platform-security` then runs `./mvnw verify` per module.
+
+### Load lab (k6)
+
+`scripts/load/booking.js` is a local lab, not a capacity claim. Compose has **one replica**, gateway **60 req/min/IP** (login **10/min**), and host-gateway networking. The script logs in **once**, browses catalog at 1 rps (200 or 429), contends a single `(showtime, seat)` (201 vs 409), and polls the outbox/Kafka saga to `CONFIRMED`/`FAILED`. Unique `Idempotency-Key` on every booking.
+
+```bash
+make up
+make load          # requires k6 on the host
+```
 
 ---
 
 ## Layout
 
 ```
+platform-security/     JWT decoder, PEM, correlation filter, RFC 7807
 api-gateway/           WebFlux gateway, JWT, Redis rate limit, route + docs proxies
 discovery-server/      Eureka
 auth-service/          identity bounded context
@@ -253,10 +267,11 @@ booking-service/
   application/         use-case + outbox relay
   adapter/             REST, Kafka, JPA, Redis, Feign
 payment-service/       PaymentGateway strategy, Kafka
-docker/postgres|prometheus|grafana
+docker/postgres|prometheus|grafana|jwt
 k8s/                   sample manifests
-scripts/build-all.sh   package all modules
+scripts/build-all.sh   install platform-security, package services
 scripts/smoke-test.sh  login → catalog → book → payment
+scripts/load/booking.js  k6 browse + contended seat + saga poll
 ```
 
 ---
@@ -270,6 +285,7 @@ See `.env.example`.
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | `cinema` | all JDBC URLs |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | `movie-booking` / `movie-booking-api` | access-token `iss` / `aud` |
 | `JWT_JWK_SET_URI` | `http://auth-service:8096/auth/.well-known/jwks.json` | resource-server JWKS |
+| `JWT_PRIVATE_KEY_LOCATION` / `JWT_PUBLIC_KEY_LOCATION` | `/keys/private.pem` / `/keys/public.pem` | auth signing material (Compose bind-mount) |
 | `REDIS_HOST` | `redis` | cache, locks, rate limit |
 | `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | booking + payment |
 | `ZIPKIN_ENDPOINT` | `http://zipkin:9411/api/v2/spans` | traces |

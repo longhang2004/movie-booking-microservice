@@ -151,9 +151,14 @@ services:
       postgres:
         condition: service_healthy
     extra_hosts: *app-hosts
+    volumes:
+      - ./docker/jwt/private.pem:/keys/private.pem:ro
+      - ./docker/jwt/public.pem:/keys/public.pem:ro
     environment:
       <<: *app-env
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
+      JWT_PRIVATE_KEY_LOCATION: /keys/private.pem
+      JWT_PUBLIC_KEY_LOCATION: /keys/public.pem
 
   movie-service:
     build:

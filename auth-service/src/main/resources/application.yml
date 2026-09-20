@@ -28,6 +28,10 @@ app:
     audience: ${JWT_AUDIENCE:movie-booking-api}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:3600}
     refresh-expiration-seconds: ${JWT_REFRESH_EXPIRATION_SECONDS:604800}
+    private-key: ${JWT_PRIVATE_KEY:}
+    public-key: ${JWT_PUBLIC_KEY:}
+    private-key-location: ${JWT_PRIVATE_KEY_LOCATION:}
+    public-key-location: ${JWT_PUBLIC_KEY_LOCATION:}
   auth:
     max-failed-attempts: 5
     lockout-seconds: 900

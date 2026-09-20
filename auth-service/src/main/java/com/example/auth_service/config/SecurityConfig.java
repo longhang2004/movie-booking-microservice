@@ -1,8 +1,10 @@
 package com.example.auth_service.config;
 
 import com.example.auth_service.security.RsaKeyService;
+import com.example.platform.security.jwt.JwtClaimValidators;
+import com.example.platform.security.jwt.JwtProperties;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -13,24 +15,17 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
-import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
-import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.security.interfaces.RSAPublicKey;
 
 @Configuration
 @EnableMethodSecurity
+@EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
 
     @Bean
@@ -68,34 +63,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    JwtDecoder jwtDecoder(
-            RsaKeyService rsaKeyService,
-            @Value("${app.jwt.issuer}") String issuer,
-            @Value("${app.jwt.audience}") String audience) throws Exception {
+    JwtDecoder jwtDecoder(RsaKeyService rsaKeyService, JwtProperties jwtProperties) throws Exception {
         RSAPublicKey publicKey = rsaKeyService.rsaKey().toRSAPublicKey();
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(publicKey).build();
-        decoder.setJwtValidator(validators(issuer, audience));
+        decoder.setJwtValidator(JwtClaimValidators.issuerAndAudience(jwtProperties.getIssuer(), jwtProperties.getAudience()));
         return decoder;
-    }
-
-    static OAuth2TokenValidator<Jwt> validators(String issuer, String audience) {
-        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuer);
-        OAuth2TokenValidator<Jwt> audienceValidator = jwt -> {
-            if (jwt.getAudience() != null && jwt.getAudience().contains(audience)) {
-                return OAuth2TokenValidatorResult.success();
-            }
-            return OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Invalid audience", null));
-        };
-        return new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
-    }
-
-    @Bean
-    JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
-        authoritiesConverter.setAuthoritiesClaimName("roles");
-        authoritiesConverter.setAuthorityPrefix("ROLE_");
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
-        return converter;
     }
 }

@@ -1,6 +1,6 @@
 package com.example.payment_service.service;
 
-import com.example.payment_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.example.payment_service.gateway.ChargeCommand;
 import com.example.payment_service.gateway.ChargeResult;
 import com.example.payment_service.gateway.PaymentGateway;

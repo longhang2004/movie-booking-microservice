@@ -1,6 +1,6 @@
 package com.example.theater_service.controller;
 
-import com.example.theater_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.example.theater_service.model.Theater;
 import com.example.theater_service.service.TheaterService;
 import io.swagger.v3.oas.annotations.Operation;

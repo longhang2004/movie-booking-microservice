@@ -1,6 +1,6 @@
 package com.example.movie_service.service;
 
-import com.example.movie_service.exception.ResourceNotFoundException;
+import com.example.platform.security.web.ResourceNotFoundException;
 import com.example.movie_service.model.Movie;
 import com.example.movie_service.repository.MovieRepository;
 import org.junit.jupiter.api.BeforeEach;
