@@ -24,6 +24,12 @@ public class RefreshToken {
     @Id
     private UUID id;
 
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
+
+    @Column(name = "family_id", nullable = false)
+    private UUID familyId;
+
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private UserAccount user;

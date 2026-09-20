@@ -30,6 +30,12 @@ public class GlobalExceptionHandler {
                 ex.getMessage(), request);
     }
 
+    @ExceptionHandler(AccountLockedException.class)
+    public ProblemDetail handleLocked(AccountLockedException ex, HttpServletRequest request) {
+        return problem(HttpStatus.LOCKED, "Locked", "https://api.moviebooking.com/errors/locked",
+                ex.getMessage(), request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ProblemDetail handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
         Map<String, String> fieldErrors = ex.getBindingResult().getFieldErrors().stream()

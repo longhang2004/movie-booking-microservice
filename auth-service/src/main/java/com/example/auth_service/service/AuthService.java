@@ -4,6 +4,7 @@ import com.example.auth_service.dto.AuthResponse;
 import com.example.auth_service.dto.LoginRequest;
 import com.example.auth_service.dto.RegisterRequest;
 import com.example.auth_service.dto.UserResponse;
+import com.example.auth_service.exception.AccountLockedException;
 import com.example.auth_service.exception.DuplicateResourceException;
 import com.example.auth_service.exception.InvalidCredentialsException;
 import com.example.auth_service.model.RefreshToken;
@@ -11,6 +12,7 @@ import com.example.auth_service.model.Role;
 import com.example.auth_service.model.UserAccount;
 import com.example.auth_service.repository.RefreshTokenRepository;
 import com.example.auth_service.repository.UserAccountRepository;
+import com.example.auth_service.security.TokenHash;
 import com.example.auth_service.security.TokenService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,18 +30,24 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final TokenService tokenService;
     private final long refreshExpirationSeconds;
+    private final int maxFailedAttempts;
+    private final long lockoutSeconds;
 
     public AuthService(
             UserAccountRepository userAccountRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
             TokenService tokenService,
-            @Value("${app.jwt.refresh-expiration-seconds}") long refreshExpirationSeconds) {
+            @Value("${app.jwt.refresh-expiration-seconds}") long refreshExpirationSeconds,
+            @Value("${app.auth.max-failed-attempts:5}") int maxFailedAttempts,
+            @Value("${app.auth.lockout-seconds:900}") long lockoutSeconds) {
         this.userAccountRepository = userAccountRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.refreshExpirationSeconds = refreshExpirationSeconds;
+        this.maxFailedAttempts = maxFailedAttempts;
+        this.lockoutSeconds = lockoutSeconds;
     }
 
     @Transactional
@@ -54,30 +62,43 @@ public class AuthService {
         user.setRole(Role.USER);
         user.setEnabled(true);
         UserAccount saved = userAccountRepository.save(user);
-        return issueTokens(saved);
+        return issueTokens(saved, UUID.randomUUID());
     }
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
         UserAccount user = userAccountRepository.findByEmailIgnoreCase(request.email())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
+        if (user.isLocked()) {
+            throw new AccountLockedException("Account is locked. Try again later");
+        }
         if (!user.isEnabled() || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            registerFailure(user);
             throw new InvalidCredentialsException("Invalid email or password");
         }
-        return issueTokens(user);
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        userAccountRepository.save(user);
+        return issueTokens(user, UUID.randomUUID());
     }
 
     @Transactional
     public AuthResponse refresh(String refreshTokenValue) {
-        UUID tokenId = parseToken(refreshTokenValue);
-        RefreshToken stored = refreshTokenRepository.findById(tokenId)
+        String hash = TokenHash.sha256(refreshTokenValue);
+        RefreshToken stored = refreshTokenRepository.findByTokenHash(hash)
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid refresh token"));
-        if (stored.isRevoked() || stored.isExpired()) {
+        if (stored.isRevoked()) {
+            refreshTokenRepository.revokeAllForFamily(stored.getFamilyId());
+            throw new InvalidCredentialsException("Refresh token reuse detected");
+        }
+        if (stored.isExpired()) {
+            stored.setRevoked(true);
+            refreshTokenRepository.save(stored);
             throw new InvalidCredentialsException("Refresh token is expired or revoked");
         }
         stored.setRevoked(true);
         refreshTokenRepository.save(stored);
-        return issueTokens(stored.getUser());
+        return issueTokens(stored.getUser(), stored.getFamilyId());
     }
 
     @Transactional
@@ -92,9 +113,21 @@ public class AuthService {
         return UserResponse.from(user);
     }
 
-    private AuthResponse issueTokens(UserAccount user) {
+    private void registerFailure(UserAccount user) {
+        int attempts = user.getFailedLoginAttempts() + 1;
+        user.setFailedLoginAttempts(attempts);
+        if (attempts >= maxFailedAttempts) {
+            user.setLockedUntil(Instant.now().plusSeconds(lockoutSeconds));
+        }
+        userAccountRepository.save(user);
+    }
+
+    private AuthResponse issueTokens(UserAccount user, UUID familyId) {
+        String rawRefresh = TokenHash.randomToken();
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setId(UUID.randomUUID());
+        refreshToken.setTokenHash(TokenHash.sha256(rawRefresh));
+        refreshToken.setFamilyId(familyId);
         refreshToken.setUser(user);
         refreshToken.setExpiresAt(Instant.now().plusSeconds(refreshExpirationSeconds));
         refreshToken.setRevoked(false);
@@ -102,18 +135,10 @@ public class AuthService {
 
         return new AuthResponse(
                 tokenService.issueAccessToken(user),
-                refreshToken.getId().toString(),
+                rawRefresh,
                 "Bearer",
                 tokenService.getExpirationSeconds(),
                 UserResponse.from(user)
         );
-    }
-
-    private UUID parseToken(String value) {
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException ex) {
-            throw new InvalidCredentialsException("Invalid refresh token");
-        }
     }
 }

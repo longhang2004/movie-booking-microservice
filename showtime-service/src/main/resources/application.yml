@@ -32,7 +32,9 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:ThisIsADevOnlySecretKeyForHS256Algo!!}
+    jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8096/auth/.well-known/jwks.json}
+    issuer: ${JWT_ISSUER:movie-booking}
+    audience: ${JWT_AUDIENCE:movie-booking-api}
 
 eureka:
   instance:
@@ -73,10 +75,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus,circuitbreakers
+        include: health,prometheus,circuitbreakers
   endpoint:
     health:
-      show-details: always
+      show-details: never
   health:
     circuitbreakers:
       enabled: true

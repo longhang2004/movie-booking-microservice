@@ -24,10 +24,13 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:ThisIsADevOnlySecretKeyForHS256Algo!!}
     issuer: ${JWT_ISSUER:movie-booking}
+    audience: ${JWT_AUDIENCE:movie-booking-api}
     expiration-seconds: ${JWT_EXPIRATION_SECONDS:3600}
     refresh-expiration-seconds: ${JWT_REFRESH_EXPIRATION_SECONDS:604800}
+  auth:
+    max-failed-attempts: 5
+    lockout-seconds: 900
 
 eureka:
   instance:
@@ -40,10 +43,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        include: health,prometheus
   endpoint:
     health:
-      show-details: always
+      show-details: never
+      probes:
+        enabled: true
   tracing:
     sampling:
       probability: 1.0

@@ -2,7 +2,9 @@ x-app-env: &app-env
   EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
   EUREKA_INSTANCE_HOSTNAME: host.docker.internal
   EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
-  JWT_SECRET: ${JWT_SECRET:-ThisIsADevOnlySecretKeyForHS256Algo!!}
+  JWT_ISSUER: ${JWT_ISSUER:-movie-booking}
+  JWT_AUDIENCE: ${JWT_AUDIENCE:-movie-booking-api}
+  JWT_JWK_SET_URI: http://auth-service:8096/auth/.well-known/jwks.json
   ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
   SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-cinema}
   SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-cinema}
@@ -130,6 +132,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      auth-service:
+        condition: service_started
     extra_hosts: *app-hosts
     environment:
       <<: *app-env

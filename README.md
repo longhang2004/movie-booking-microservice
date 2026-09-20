@@ -30,8 +30,8 @@ Distributed cinema ticketing system. Clients hit a Spring Cloud Gateway; downstr
               └─────────────────────────┘
 
   auth-service :8096          movie-service :8091
-  HS256 access + refresh      paginated search
-  RBAC USER | ADMIN           Redis cache (movies)
+  RS256 JWT + JWKS            paginated search
+  hashed refresh, lockout     Redis cache (movies)
 
   theater-service :8092       showtime-service :8093
   theaters / rooms            Feign → movie, theater
@@ -53,12 +53,13 @@ All public traffic is `/api/v1/**`. Gateway rewrites to the service path (`/book
 ## Request path
 
 1. Gateway issues/forwards `X-Correlation-Id` (also used as Micrometer `traceId` context).
-2. Redis key `rl:{clientIp}`: `INCR` + 60s TTL, **60 req/min**. `/actuator/**` and OpenAPI paths are excluded. Over limit → `429`.
+2. Redis rate limit: **10 req/min** on `/auth/login`, **60 req/min** otherwise (`rl:{ip}` / `rl:login:{ip}`). Actuator, OpenAPI, and JWKS are excluded. Over limit → `429`.
 3. JWT is required except for:
-   - `POST /api/v1/auth/**`
+   - `POST /api/v1/auth/register|login|refresh`
+   - `GET /auth/.well-known/jwks.json`
    - `GET` catalog: movies, theaters, showtimes
-   - actuator / swagger
-4. Resource servers decode HS256 (`app.jwt.secret`), map claim `roles` → `ROLE_*`. Catalog **writes** need `ADMIN`. Booking/payment APIs need an authenticated user; booking reads are owner-or-admin.
+   - `/actuator/health`, `/actuator/prometheus`, swagger
+4. Resource servers load the auth JWKS (`GET /auth/.well-known/jwks.json`), verify **RS256**, and reject tokens whose `iss` / `aud` do not match `movie-booking` / `movie-booking-api`. Claim `roles` → `ROLE_*`. Catalog **writes** need `ADMIN`. Booking/payment APIs need an authenticated user; reads are owner-or-admin.
 
 Demo seed accounts (non-`test` profile):
 
@@ -84,9 +85,11 @@ Each service runs Flyway (`ddl-auto: validate`, `open-in-view: false`). Schemas 
 
 ### Auth
 
-- `POST /auth/register`, `/auth/login` → access JWT + rotating refresh token (stored hashed).
-- Claims: `userId`, `roles`, `sub` (email). Access TTL from `JWT_EXPIRATION_SECONDS` (default 3600s).
-- `GET /auth/me`, `POST /auth/refresh`.
+- `POST /auth/register`, `/auth/login` → RS256 access JWT + opaque refresh token.
+- Refresh tokens are stored as SHA-256 hashes. Rotation revokes the previous token; presenting a revoked token revokes the whole family (reuse detection).
+- Five failed logins lock the account for 15 minutes (`423 Locked`).
+- JWKS: `GET /auth/.well-known/jwks.json`. Claims: `iss`, `aud`, `userId`, `roles`, `sub` (email). Access TTL from `JWT_EXPIRATION_SECONDS` (default 3600s).
+- `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout`.
 
 ### Catalog
 
@@ -265,7 +268,8 @@ See `.env.example`.
 | Variable | Default | Use |
 |----------|---------|-----|
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` | `cinema` | all JDBC URLs |
-| `JWT_SECRET` | dev HS256 key | must be identical on gateway + resource servers |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | `movie-booking` / `movie-booking-api` | access-token `iss` / `aud` |
+| `JWT_JWK_SET_URI` | `http://auth-service:8096/auth/.well-known/jwks.json` | resource-server JWKS |
 | `REDIS_HOST` | `redis` | cache, locks, rate limit |
 | `SPRING_KAFKA_BOOTSTRAP_SERVERS` | `kafka:9092` | booking + payment |
 | `ZIPKIN_ENDPOINT` | `http://zipkin:9411/api/v2/spans` | traces |
