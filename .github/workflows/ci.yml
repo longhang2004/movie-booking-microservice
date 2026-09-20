@@ -21,10 +21,15 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.9
+
       - name: Build and test platform-security
         run: |
-          chmod +x ./auth-service/mvnw
-          ./auth-service/mvnw -f platform-security/pom.xml clean install --no-transfer-progress
+          chmod +x ./scripts/ci-mvn.sh
+          ./scripts/ci-mvn.sh -f platform-security/pom.xml clean install --no-transfer-progress
 
   build-and-test:
     name: Build & Test (${{ matrix.service }})
@@ -54,16 +59,21 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.9
+
       - name: Install platform-security
         run: |
-          chmod +x ./auth-service/mvnw
-          ./auth-service/mvnw -f platform-security/pom.xml clean install -DskipTests --no-transfer-progress
+          chmod +x ./scripts/ci-mvn.sh
+          ./scripts/ci-mvn.sh -f platform-security/pom.xml clean install -DskipTests --no-transfer-progress
 
       - name: Build and test ${{ matrix.service }}
         working-directory: ./${{ matrix.service }}
         run: |
-          chmod +x ./mvnw
-          ./mvnw clean verify --no-transfer-progress
+          chmod +x ../scripts/ci-mvn.sh
+          ../scripts/ci-mvn.sh clean verify --no-transfer-progress
 
       - name: Upload test reports
         if: always()
@@ -101,16 +111,21 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Set up Maven
+        uses: stCarolas/setup-maven@v5
+        with:
+          maven-version: 3.9.9
+
       - name: Install platform-security
         run: |
-          chmod +x ./auth-service/mvnw
-          ./auth-service/mvnw -f platform-security/pom.xml clean install -DskipTests --no-transfer-progress
+          chmod +x ./scripts/ci-mvn.sh
+          ./scripts/ci-mvn.sh -f platform-security/pom.xml clean install -DskipTests --no-transfer-progress
 
       - name: Package ${{ matrix.service }}
         working-directory: ./${{ matrix.service }}
         run: |
-          chmod +x ./mvnw
-          ./mvnw clean package -DskipTests --no-transfer-progress
+          chmod +x ../scripts/ci-mvn.sh
+          ../scripts/ci-mvn.sh clean package -DskipTests --no-transfer-progress
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
