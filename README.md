@@ -206,7 +206,7 @@ curl -X POST http://localhost:8090/api/v1/bookings \
 
 ## Test results
 
-Recorded **2026-09-20** on branch `cursor/security-rs256-jwks-fd20` (`a249a41`). Full matrix and commands: [docs/testing.md](docs/testing.md).
+Recorded **2026-09-20** after merge to `main`. Full matrix and commands: [docs/testing.md](docs/testing.md).
 
 | Layer | Result |
 |-------|--------|

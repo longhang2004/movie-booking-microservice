@@ -14,7 +14,7 @@ CI (`.github/workflows/ci.yml`): install `platform-security`, then `./mvnw verif
 
 ## Results (2026-09-20)
 
-Commit `a249a41` on `cursor/security-rs256-jwks-fd20`.
+Squashed onto `main` (`f480eb6`). Unit tests and CI below ran on PR commit `a249a41` (same code as the squash, except the later docs-only commit).
 
 ### Unit tests (local)
 
